@@ -1,0 +1,6 @@
+usage: generator.exe -d [cache|postgres] [-g] [-a] [-s text] [-i]  
+-d: which database  
+-g: generate test data  
+-a: aggregation test  
+-s: search text  
+-i: insensitive search. Use only with -s flag 
