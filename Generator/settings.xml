@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<settings>
+	<!--Настройки ODBC -->
+	<cacheDSN>DSN=CACHE</cacheDSN>
+	<postgresDSN>DSN=PostgreSQL35W</postgresDSN>
+
+	<!--Файл с названиями и скаолько добавить продуктов с каждым названием -->
+	<productsFile>data\products</productsFile>
+	<perProduct>20850</perProduct>
+
+	<!--Файл с названиями и сколько добавить всего компаний -->
+	<companiesFile>data\companies</companiesFile>
+	<companiesNumber>1000000</companiesNumber>
+
+	<!--Файл с городами -->
+	<citiesFile>data\cities</citiesFile>
+
+	<!--Файл с именами и сколько всего персонала добавить -->
+	<staffFile>data\names</staffFile>
+	<staffNumber>1000000</staffNumber>
+
+	<!--Файл с предложениями и сколько продуктов добавит каждая компания -->
+	<prodItemsText>data\book.txt</prodItemsText>
+	<prodItemsNumber>1</prodItemsNumber>
+
+	<!--Сколько продуктов будет в каждой партии -->
+	<batchesNumber>1</batchesNumber>
+</settings>

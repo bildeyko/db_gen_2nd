@@ -8,6 +8,7 @@ using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 using Generator.Models;
 
@@ -18,12 +19,15 @@ namespace Generator
         OdbcConnection con;
         Stopwatch sw;
         string Schema;
-        public Gen(OdbcConnection con, int dbType)
+
+        public enum DBType { Cache, Postgres }
+
+        public Gen(OdbcConnection con, DBType dbType)
         {
             this.con = con;
-            if (dbType == 1)
+            if (dbType == DBType.Cache)
                 Schema = "";
-            if (dbType == 2)
+            if (dbType == DBType.Postgres)
                 Schema = "public.";
         }
 
@@ -85,18 +89,34 @@ namespace Generator
             Console.WriteLine("Products were added to the database: {0:N4} s", sw.Elapsed.TotalSeconds);
         }
 
-        public void CreateCompanies(int n)
+        public void CreateCompanies(int n, string filename)
         {
             sw = Stopwatch.StartNew();
 
+            List<string> companies = new List<string>();
+
+            using (StreamReader file = new StreamReader(filename))
+            {
+                string line;
+                while ((line = file.ReadLine()) != null)
+                {
+                    companies.Add(line);
+                }
+
+            }
+
             Random rand = new Random();
+            int companyIndex = 0;
             for (var i = 0; i < n; i++)
             {
-                var name = RandomString(15, rand);
+                if (i % companies.Count == 0)
+                    companyIndex = 0;
+                var name = companies[companyIndex];
                 var address = RandomString(150, rand);
                 var tin = GetRandom(1000000000, 9999999999, rand);
                 var postcode = GetRandom(10000000, 99999999, rand);
                 InsertCompany(name, address, tin, postcode);
+                companyIndex ++;
             }
 
             sw.Stop();
@@ -150,7 +170,7 @@ namespace Generator
             Console.WriteLine("Staff were added to the database: {0:N4} s", sw.Elapsed.TotalSeconds);
         }
 
-        public void CreateProductItems(int n)
+        public void CreateProductItems(int n, string filename)
         {
             sw = Stopwatch.StartNew();
 
@@ -158,8 +178,28 @@ namespace Generator
             var products = SelectProducts();
             var cities = SelectCities();
             var date = DateTime.Now;
+            List<string> sentences = new List<string>();
+
+            using (StreamReader file = new StreamReader(filename))
+            {
+                string line;
+                while ((line = file.ReadLine()) != null)
+                {
+                    string[] buf = Regex.Split(line, @"(?<=[\.!\?])\s+\n*");
+
+                    foreach (string sentence in buf)
+                    {
+                        if(sentence.Length > 10)
+                            sentences.Add(sentence);
+                    }
+                }
+
+            }
+            Console.WriteLine("Sentences were read");
 
             var rand = new Random();
+            var allinputs = 0; ;
+            var sentenceIndex = 0;
             for (var i = 0; i < companies.Count; i++)
             {
                 for (var j = 0; j < n; j++)
@@ -169,11 +209,18 @@ namespace Generator
                     var city = cities[rand.Next(0, cities.Count - 1)];
                     var newDate = DateTime.Now.AddDays(rand.Next(183, 730));
 
+                    if (allinputs % sentences.Count == 0)
+                        sentenceIndex = 0;
+
+                    var descr = sentences[sentenceIndex];
+
                     var quantity = rand.Next(100, 10000);
                     var price = RandomDouble(300.0, 1500.0, rand);
 
-                    InsertProductItem(company, product, city, quantity, price, newDate);
+                    InsertProductItem(company, product, city, quantity, price, newDate, descr);
                 }
+                allinputs++;
+                sentenceIndex++;
             }
 
             sw.Stop();
@@ -303,16 +350,17 @@ namespace Generator
             InsertRow(command);
         }
 
-        private void InsertProductItem(CompanyModel company, ProductModel product, CityModel city, int quantity, double price, DateTime date)
+        private void InsertProductItem(CompanyModel company, ProductModel product, CityModel city, int quantity, double price, DateTime date, string descr)
         {
-            var sql = string.Format("insert into Exchange.{0}ProductItem (company, product, location, quantity, shelfLife, price) values (?,?,?,?,?,?)", Schema);
+            var sql = string.Format("insert into Exchange.{0}ProductItem (company, product, location, quantity, shelfLife, price, description) values (?,?,?,?,?,?,?)", Schema);
             OdbcCommand command = new OdbcCommand(sql, con);
             command.Parameters.Add("Company", OdbcType.Int).Value = company.Id;
             command.Parameters.Add("Product", OdbcType.Int).Value = product.Id;
             command.Parameters.Add("City", OdbcType.Int).Value = city.Id;
             command.Parameters.Add("Quantity", OdbcType.Int).Value = quantity;
             command.Parameters.Add("ShelfLife", OdbcType.DateTime).Value = date;
-            command.Parameters.Add("Price", OdbcType.Double).Value = price;            
+            command.Parameters.Add("Price", OdbcType.Double).Value = Math.Round(price, 2);
+            command.Parameters.Add("Desciption", OdbcType.VarChar).Value = descr;
 
             InsertRow(command);
         }

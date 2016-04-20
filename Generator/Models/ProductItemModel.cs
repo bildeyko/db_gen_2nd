@@ -12,6 +12,9 @@ namespace Generator.Models
         public int Type { get; set; }
         public int Quantity { get; set; }
         public bool Changed { get; set; }
+        public string Description { get; set; }
+        public DateTime Date { get; set; }
+        public double Price { get; set; }
 
         public ProductItemModel()
         {
