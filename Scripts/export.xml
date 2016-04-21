@@ -1,0 +1,858 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Export generator="Cache" version="25" zv="Cache for Windows (x86-64) 2016.1 (Build 656U_SU)" ts="2016-04-20 11:51:19">
+<Class name="Exchange.Batch">
+<Super>%Persistent</Super>
+<TimeChanged>64015,7045.461269</TimeChanged>
+<TimeCreated>63999,52272.105177</TimeCreated>
+
+<Property name="manager">
+<Type>Staff</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheStaff</Inverse>
+</Property>
+
+<Property name="type">
+<Type>ProductType</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheBatchType</Inverse>
+</Property>
+
+<Property name="buildDate">
+<Type>%TimeStamp</Type>
+</Property>
+
+<Property name="ItemBatchBridge">
+<Type>ItemBatch</Type>
+<Cardinality>many</Cardinality>
+<Inverse>batch</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateBatch">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>m:Staff,t:ProductType,d:%TimeStamp,its:%ListOfObjects</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set batch=##class(Exchange.Batch).%New()
+	Set batch.manager=m
+	Set batch.type=t
+	Set batch.buildDate=d
+	
+	For i=1:1:its.Count() {
+		Set itm = its.GetAt(i)
+		Set q = $RANDOM(itm.quantity-1+1)+1		
+		Set itm.quantity = itm.quantity - q		
+		Do ##class(Exchange.ItemBatch).CreateBridge(batch,itm,q)
+	}
+	
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="InsertBatch">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>m:Staff,t:ProductType,d:%TimeStamp,its:%ListOfObjects</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%SQL.Statement).%New()
+	Set ddl = "INSERT INTO Exchange.Batch (manager, type, buildDate) "
+	Set ddl = ddl_"VALUES(?,?,?)"
+	
+	SET qStatus = query.%Prepare(ddl)
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	set rtn = query.%Execute(m.%Id(),t.%Id(),d)
+	
+	If rtn.%SQLCODE=0 {
+    	For i=1:1:its.Count() {
+			Set itm = its.GetAt(i)
+			If itm.quantity=0 {
+				CONTINUE
+			}
+			Set q = $RANDOM(itm.quantity-1+1)+1	
+			Set itm.quantity = itm.quantity - q		
+			Do itm.%Save()
+			Do ##class(Exchange.ItemBatch).InsertBridge(rtn.%ROWID,itm,q)
+		}
+	} else {
+    	WRITE !,"CREATE QUERY error: ",rset.%SQLCODE," ",rset.%Message 
+    	QUIT
+	}
+	
+	return 1
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.BatchD</DataLocation>
+<DefaultData>BatchDefaultData</DefaultData>
+<IdLocation>^Exchange.BatchD</IdLocation>
+<IndexLocation>^Exchange.BatchI</IndexLocation>
+<StreamLocation>^Exchange.BatchS</StreamLocation>
+<Data name="BatchDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>manager</Value>
+</Value>
+<Value name="3">
+<Value>type</Value>
+</Value>
+<Value name="4">
+<Value>buildDate</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.City">
+<Super>%Persistent</Super>
+<TimeChanged>64014,69587.468415</TimeChanged>
+<TimeCreated>64013,79099.302129</TimeCreated>
+
+<Property name="name">
+<Type>%String</Type>
+</Property>
+
+<Property name="TheCity">
+<Type>ProductItem</Type>
+<Cardinality>many</Cardinality>
+<Inverse>location</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateCity">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>n:%String</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set city=##class(Exchange.City).%New()
+	Set city.name=n
+	Set status = city.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetCities">
+<ClassMethod>1</ClassMethod>
+<ReturnType>%ListOfObjects</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	SET qStatus = query.Prepare("SELECT * FROM Exchange.City")
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute()
+	
+	Set list = ##class(%Library.ListOfObjects).%New()	
+	
+	While (query.Next()) {
+		do list.Insert(query.GetObject())
+	}
+	
+	Return list
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.CityD</DataLocation>
+<DefaultData>CityDefaultData</DefaultData>
+<IdLocation>^Exchange.CityD</IdLocation>
+<IndexLocation>^Exchange.CityI</IndexLocation>
+<StreamLocation>^Exchange.CityS</StreamLocation>
+<Data name="CityDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>name</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.Company">
+<Super>%Persistent</Super>
+<TimeChanged>64000,175.432702</TimeChanged>
+<TimeCreated>63998,80310.640142</TimeCreated>
+
+<Property name="tin">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="name">
+<Type>%String</Type>
+</Property>
+
+<Property name="address">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="200"/>
+</Property>
+
+<Property name="postcode">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="TheCompany">
+<Type>ProductItem</Type>
+<Cardinality>many</Cardinality>
+<Inverse>company</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateCompany">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>t:%Integer,n:%String,a:%String,p:%String</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set company=##class(Exchange.Company).%New()
+	Set company.tin=t
+	Set company.name=n
+	Set company.address=a
+	Set company.postcode=p
+	Set status = company.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetCompanies">
+<ClassMethod>1</ClassMethod>
+<ReturnType>%ListOfObjects</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	SET qStatus = query.Prepare("SELECT * FROM Exchange.Company")
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute()
+	
+	Set list = ##class(%Library.ListOfObjects).%New()	
+	
+	While (query.Next()) {
+		do list.Insert(query.GetObject())
+	}
+	
+	Return list
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.CompanyD</DataLocation>
+<DefaultData>CompanyDefaultData</DefaultData>
+<IdLocation>^Exchange.CompanyD</IdLocation>
+<IndexLocation>^Exchange.CompanyI</IndexLocation>
+<StreamLocation>^Exchange.CompanyS</StreamLocation>
+<Data name="CompanyDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>tin</Value>
+</Value>
+<Value name="3">
+<Value>name</Value>
+</Value>
+<Value name="4">
+<Value>address</Value>
+</Value>
+<Value name="5">
+<Value>postcode</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.ItemBatch">
+<Super>%Persistent</Super>
+<TimeChanged>64015,2969.294426</TimeChanged>
+<TimeCreated>64000,45260.088902</TimeCreated>
+
+<Property name="batch">
+<Type>Batch</Type>
+<Cardinality>one</Cardinality>
+<Inverse>ItemBatchBridge</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="item">
+<Type>ProductItem</Type>
+<Cardinality>one</Cardinality>
+<Inverse>ItemBatchBridge</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="quantity">
+<Type>%Integer</Type>
+</Property>
+
+<Method name="CreateBridge">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>b:Batch,i:ProductItem,q:%Integer</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set bridge=##class(Exchange.ItemBatch).%New()
+	Set bridge.batch=b
+	Set bridge.item=i
+	Set bridge.quantity=q
+	Set status = bridge.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="InsertBridge">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>b:%Integer,i:ProductItem,q:%Integer</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%SQL.Statement).%New()
+	Set ddl = "INSERT INTO Exchange.ItemBatch (batch, item, quantity) "
+	Set ddl = ddl_"VALUES(?,?,?)"
+	
+	SET qStatus = query.%Prepare(ddl)
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.%Execute(b,i.%Id(),q)
+	
+	return 1
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.ItemBatchD</DataLocation>
+<DefaultData>ItemBatchDefaultData</DefaultData>
+<IdLocation>^Exchange.ItemBatchD</IdLocation>
+<IndexLocation>^Exchange.ItemBatchI</IndexLocation>
+<StreamLocation>^Exchange.ItemBatchS</StreamLocation>
+<Data name="ItemBatchDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>batch</Value>
+</Value>
+<Value name="3">
+<Value>item</Value>
+</Value>
+<Value name="4">
+<Value>quantity</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.Product">
+<Super>%Persistent</Super>
+<TimeChanged>64015,1462.694031</TimeChanged>
+<TimeCreated>63997,85014.023226</TimeCreated>
+
+<Property name="barcode">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="name">
+<Type>%String</Type>
+</Property>
+
+<Property name="type">
+<Type>ProductType</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheType</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="TheProduct">
+<Type>ProductItem</Type>
+<Cardinality>many</Cardinality>
+<Inverse>product</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateProduct">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>b:%Integer,n:%String,t:Exchange.ProductType</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set product=##class(Exchange.Product).%New()
+	Set product.barcode=b
+	Set product.name=n
+	Set product.type=t
+	Set status = product.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="InsertProduct">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>b:%Integer,n:%String,t:Exchange.ProductType</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	Set ddl = "INSERT INTO Exchange.Product (barcode, name, type) "
+	Set ddl = ddl_"VALUES(?,?,?)"
+	
+	SET qStatus = query.Prepare(ddl)
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute(b,n,t.%Id())
+	
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetProducts">
+<ClassMethod>1</ClassMethod>
+<ReturnType>%ListOfObjects</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	SET qStatus = query.Prepare("SELECT * FROM Exchange.Product")
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute()
+	
+	Set list = ##class(%Library.ListOfObjects).%New()	
+	
+	While (query.Next()) {
+		do list.Insert(query.GetObject())
+	}
+	
+	Return list
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.ProductD</DataLocation>
+<DefaultData>ProductDefaultData</DefaultData>
+<IdLocation>^Exchange.ProductD</IdLocation>
+<IndexLocation>^Exchange.ProductI</IndexLocation>
+<StreamLocation>^Exchange.ProductS</StreamLocation>
+<Data name="ProductDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>barcode</Value>
+</Value>
+<Value name="3">
+<Value>name</Value>
+</Value>
+<Value name="4">
+<Value>type</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.ProductItem">
+<Super>%Persistent</Super>
+<TimeChanged>64027,39898.318266</TimeChanged>
+<TimeCreated>63998,86321.714119</TimeCreated>
+
+<Property name="company">
+<Type>Company</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheCompany</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="product">
+<Type>Product</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheProduct</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="location">
+<Type>Exchange.City</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheCity</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="quantity">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="price">
+<Type>%Numeric</Type>
+</Property>
+
+<Property name="shelfLife">
+<Type>%TimeStamp</Type>
+</Property>
+
+<Property name="description">
+<Type>%String</Type>
+<Parameter name="MAXLEN" value="3000"/>
+</Property>
+
+<Property name="ItemBatchBridge">
+<Type>ItemBatch</Type>
+<Cardinality>many</Cardinality>
+<Inverse>item</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateItem">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>c:Exchange.Company,p:Exchange.Product,q:%Integer,pr:%Numeric,city:Exchange.City,s:%DateTime</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set item=##class(Exchange.ProductItem).%New()
+	Set item.company=c
+	Set item.product=p
+	Set item.quantity=q
+	Set item.price=pr
+	Set item.shelfLife=s
+	Set item.location=city
+	Set status = item.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="InsertItem">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>c:Exchange.Company,p:Exchange.Product,q:%Integer,pr:%Numeric,city:Exchange.City,s:%DateTime</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	Set ddl = "INSERT INTO Exchange.ProductItem (company, product, quantity, price, shelfLife, location) "
+	Set ddl = ddl_"VALUES(?,?,?,?,?,?)"
+	
+	SET qStatus = query.Prepare(ddl)
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute(c.%Id(),p.%Id(),q,pr,s,city.%Id())
+	
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetByType">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>type:ProductType</FormalSpec>
+<ReturnType>%ListOfObjects</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	Set ddl = "SELECT TOP 10 ProductItem.* FROM Exchange.ProductItem, Exchange.Product "
+	Set ddl = ddl_"WHERE Exchange.ProductItem.product=Exchange.Product.ID AND Exchange.Product.type=? AND ProductItem.quantity > 1"
+	
+	SET qStatus = query.Prepare(ddl)
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute(type.%Id())
+	
+	Set list = ##class(%Library.ListOfObjects).%New()	
+	
+	While (query.Next()) {
+		do list.Insert(query.GetObject())
+	}
+	
+	Return list
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.ProductItemD</DataLocation>
+<DefaultData>ProductItemDefaultData</DefaultData>
+<IdLocation>^Exchange.ProductItemD</IdLocation>
+<IndexLocation>^Exchange.ProductItemI</IndexLocation>
+<StreamLocation>^Exchange.ProductItemS</StreamLocation>
+<Data name="ProductItemDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>company</Value>
+</Value>
+<Value name="3">
+<Value>product</Value>
+</Value>
+<Value name="4">
+<Value>location</Value>
+</Value>
+<Value name="5">
+<Value>quantity</Value>
+</Value>
+<Value name="6">
+<Value>price</Value>
+</Value>
+<Value name="7">
+<Value>shelfLife</Value>
+</Value>
+<Value name="8">
+<Value>description</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.ProductType">
+<Super>%Persistent</Super>
+<TimeChanged>64000,635.659549</TimeChanged>
+<TimeCreated>63997,58227.208399</TimeCreated>
+
+<Property name="name">
+<Type>%String</Type>
+</Property>
+
+<Property name="unit">
+<Type>Unit</Type>
+<Cardinality>one</Cardinality>
+<Inverse>TheUnit</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="TheType">
+<Type>Product</Type>
+<Cardinality>many</Cardinality>
+<Inverse>type</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Property name="TheBatchType">
+<Type>Batch</Type>
+<Cardinality>many</Cardinality>
+<Inverse>type</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateType">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>n:%String,u:Exchange.Unit</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set type=##class(Exchange.ProductType).%New()
+	Set type.name=n
+	Set type.unit=u
+	Set status = type.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetByName">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>n:%String</FormalSpec>
+<ReturnType>Exchange.ProductType</ReturnType>
+<Implementation><![CDATA[
+	&sql(SELECT %ID INTO :id FROM ProductType WHERE name = :n)
+	If (SQLCODE = 0) {
+		Set unit = ##class(Exchange.ProductType).%OpenId(id)
+		return unit
+	}
+]]></Implementation>
+</Method>
+
+<Method name="GetTypes">
+<ClassMethod>1</ClassMethod>
+<ReturnType>%ListOfObjects</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	SET qStatus = query.Prepare("SELECT * FROM Exchange.ProductType")
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute()
+	
+	Set list = ##class(%Library.ListOfObjects).%New()	
+	
+	While (query.Next()) {
+		do list.Insert(query.GetObject())
+	}
+	
+	Return list
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.ProductTypeD</DataLocation>
+<DefaultData>ProductTypeDefaultData</DefaultData>
+<IdLocation>^Exchange.ProductTypeD</IdLocation>
+<IndexLocation>^Exchange.ProductTypeI</IndexLocation>
+<StreamLocation>^Exchange.ProductTypeS</StreamLocation>
+<Data name="ProductTypeDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>name</Value>
+</Value>
+<Value name="3">
+<Value>unit</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.Staff">
+<Super>%Persistent</Super>
+<TimeChanged>64000,582.726001</TimeChanged>
+<TimeCreated>63999,50093.327663</TimeCreated>
+
+<Property name="name">
+<Type>%String</Type>
+</Property>
+
+<Property name="surname">
+<Type>%String</Type>
+</Property>
+
+<Property name="snils">
+<Type>%Integer</Type>
+</Property>
+
+<Property name="TheStaff">
+<Type>Batch</Type>
+<Cardinality>many</Cardinality>
+<Inverse>manager</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateStaff">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>n:%String,sn:%String,s:%Integer</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set staff=##class(Exchange.Staff).%New()
+	Set staff.name=n
+	Set staff.surname=sn
+	Set staff.snils=s
+	Set status = staff.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetStaff">
+<ClassMethod>1</ClassMethod>
+<ReturnType>%ListOfObjects</ReturnType>
+<Implementation><![CDATA[
+	Set query = ##class(%ResultSet).%New("%DynamicQuery:SQL")
+	SET qStatus = query.Prepare("SELECT * FROM Exchange.Staff")
+ 	IF qStatus'=1 { WRITE "%Prepare failed",$System.Status.DisplayError(qStatus) QUIT}
+	Do query.Execute()
+	
+	Set list = ##class(%Library.ListOfObjects).%New()	
+	
+	While (query.Next()) {
+		do list.Insert(query.GetObject())
+	}
+	
+	Return list
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.StaffD</DataLocation>
+<DefaultData>StaffDefaultData</DefaultData>
+<IdLocation>^Exchange.StaffD</IdLocation>
+<IndexLocation>^Exchange.StaffI</IndexLocation>
+<StreamLocation>^Exchange.StaffS</StreamLocation>
+<Data name="StaffDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>name</Value>
+</Value>
+<Value name="3">
+<Value>surname</Value>
+</Value>
+<Value name="4">
+<Value>snils</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+
+
+<Class name="Exchange.Unit">
+<Super>%Persistent</Super>
+<TimeChanged>64025,8817.836992</TimeChanged>
+<TimeCreated>63997,58156.799734</TimeCreated>
+
+<Property name="name">
+<Type>%String</Type>
+</Property>
+
+<Property name="shortName">
+<Type>%String</Type>
+</Property>
+
+<Property name="TheUnit">
+<Type>ProductType</Type>
+<Cardinality>many</Cardinality>
+<Inverse>unit</Inverse>
+<Relationship>1</Relationship>
+</Property>
+
+<Method name="CreateUnit">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>n:%String,s:%String</FormalSpec>
+<ReturnType>%Integer</ReturnType>
+<Implementation><![CDATA[
+	Set unit=##class(Exchange.Unit).%New()
+	Set unit.name=n
+	Set unit.shortName=s
+	Set status = unit.%Save() 
+	if $$$ISERR(status) {do $System.Status.DisplayError(status) return status}
+	return 1
+]]></Implementation>
+</Method>
+
+<Method name="GetByName">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>n:%String</FormalSpec>
+<ReturnType>Exchange.Unit</ReturnType>
+<Implementation><![CDATA[
+	&sql(SELECT %ID INTO :id FROM Unit WHERE name = :n)
+	If (SQLCODE = 0) {
+		Set unit = ##class(Exchange.Unit).%OpenId(id)
+		return unit
+	}
+]]></Implementation>
+</Method>
+
+<Method name="DeleteUnit">
+<ClassMethod>1</ClassMethod>
+<FormalSpec>id:%Integer</FormalSpec>
+<Implementation><![CDATA[
+	
+	If (##class(Exchange.Unit).%ExistsId(id) = 1) {
+		set abc=5
+	} else {
+		Write !,"Id not exist"
+	}
+]]></Implementation>
+</Method>
+
+<Storage name="Default">
+<Type>%Library.CacheStorage</Type>
+<DataLocation>^Exchange.UnitD</DataLocation>
+<DefaultData>UnitDefaultData</DefaultData>
+<IdLocation>^Exchange.UnitD</IdLocation>
+<IndexLocation>^Exchange.UnitI</IndexLocation>
+<StreamLocation>^Exchange.UnitS</StreamLocation>
+<Data name="UnitDefaultData">
+<Value name="1">
+<Value>%%CLASSNAME</Value>
+</Value>
+<Value name="2">
+<Value>name</Value>
+</Value>
+<Value name="3">
+<Value>shortName</Value>
+</Value>
+</Data>
+</Storage>
+</Class>
+</Export>
