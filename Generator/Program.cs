@@ -13,13 +13,16 @@ using CommandLine;
 using CommandLine.Text;
 using System.Xml.Serialization;
 using System.IO;
+using System.Text.RegularExpressions;
+using Generator.FuzzyString;
 
 namespace Generator
 {
     class Program
     {
         private static Gen gen;
-        private static Settings settings;        
+        private static Settings settings; 
+        private static string dsn;       
 
         static void Main(string[] args)
         {
@@ -42,7 +45,6 @@ namespace Generator
             if (Parser.Default.ParseArguments(args, options))
             {
                 Gen.DBType type = Gen.DBType.Cache;
-                string dsn = "";
                 switch (options.database)
                 {
                     case "cache":
@@ -58,17 +60,28 @@ namespace Generator
                         return;
                 }
                 if (options.generate)
-                    Generate(dsn, type);
+                {
+                    Generate(type);
+                    return;
+                }
 
                 if (options.aggregate)
-                    Aggregation(dsn, type);
+                {
+                    Aggregation(type);
+                    return;
+                }
 
                 if (options.searchText != null && options.searchText != "")
-                    Search(options.searchText, dsn, type, options.insensitive);
+                {
+                    Search(options.searchText, type, options.insensitive);
+                    return;
+                }
+
+                DialogMode(type);
             }
         }
 
-        static void Generate(string dsn, Gen.DBType type)
+        static void Generate(Gen.DBType type)
         {
             OdbcConnection DbConnection = new OdbcConnection(dsn);
 
@@ -97,7 +110,7 @@ namespace Generator
 
         }
 
-        static void Aggregation(string dsn, Gen.DBType type)
+        static void Aggregation(Gen.DBType type)
         {
             OdbcConnection DbConnection = new OdbcConnection(dsn);
             Queries q;
@@ -125,7 +138,182 @@ namespace Generator
             }
         }
 
-        static void Search(string line, string dsn, Gen.DBType type, bool insCase)
+        static void DialogMode(Gen.DBType dbtype)
+        {
+            Console.WriteLine("Dialog mode");
+            bool exit = true;
+            Regex comRegex = new Regex(@"^\s*/(quit|select|q|setfussy)\s*");
+            Regex selectRegex = new Regex(@"^\s*/select\s*(\d+)");
+            Regex setfussyRegex = new Regex(@"^\s*/setfussy\s*([123])");
+            int searchType;
+
+            Console.WriteLine("Set search metric");
+            Console.WriteLine("1 - Levenshtein Distance");
+            Console.WriteLine("2 - Jaro-Winkler Distance");
+            Console.WriteLine("3 - Longest Common Substring");
+            searchType = Int32.Parse(Console.ReadLine());
+
+            SortedList<double, FastSearchModel> list = new SortedList<double, FastSearchModel>();
+
+            while (exit)
+            {
+                var comLine = Console.ReadLine();
+                var com = comLine;
+                Match match = comRegex.Match(comLine);
+                if (match.Success)
+                    com = match.Groups[1].Value;
+
+                switch(com)
+                {
+                    case "select":
+                        match = selectRegex.Match(comLine);
+                        var index = 0;
+
+                        if (match.Success)
+                        {
+                            index = Int32.Parse(match.Groups[1].Value);
+                            int i = 1;
+                            foreach (var item in list)
+                            {
+                                if (i == index)
+                                {
+                                    Search(item.Value.Description, dbtype, false);
+                                }
+                                i++;
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine("Wrong command syntax");
+                            break;
+                        }
+                        Console.WriteLine("Selected index {0}", index);
+                        break;
+                    case "setfussy":
+                        match = setfussyRegex.Match(comLine);
+                        if (match.Success)
+                        {
+                            searchType = Int32.Parse(match.Groups[1].Value);
+                            Console.WriteLine("Metric changed");
+                        }
+                        else
+                        {
+                            Console.WriteLine("Wrong command syntax");
+                            break;
+                        }
+                        break;
+                    case "q":
+                    case "quit":
+                        Console.WriteLine("Quit");
+                        return;
+                    default:
+                        list = SearchDialog(comLine, dbtype, searchType);
+                        if (list.Count == 0)
+                            Console.WriteLine("Your search - {0} - did notmatch any sentences", comLine);
+                        else
+                        {
+                            int i = 1;
+                            foreach (var item in list)
+                            {
+                                if (i == 7)
+                                {
+                                    break;
+                                }
+
+                                var outStr = "{0}. {1}";
+                                var descr = (item.Value.Description.Length > 76) ? item.Value.Description.Substring(0, 76) + "..." : item.Value.Description;
+                                Console.WriteLine(outStr, i, descr);
+                                i++;
+                            }
+                        }
+                        break;
+                }
+            }
+        }
+
+        static SortedList<double, FastSearchModel> SearchDialog(string line, Gen.DBType type, int seachType)
+        {
+            var items = SeacrhDescr(type);
+
+            var list = FussySearch(line, items, seachType);
+
+            if(list.Count == 0)
+                line = Replace(line);
+            else
+                return list;
+
+            var oldCount = list.Count;
+
+            list = FussySearch(line, items, seachType);
+
+            if(list.Count > oldCount)
+                Console.WriteLine("Did you mean: {0}", line);
+
+            return list;
+        }
+
+        static List<FastSearchModel> SeacrhDescr(Gen.DBType type)
+        {
+            OdbcConnection DbConnection = new OdbcConnection(dsn);
+            Queries q;
+            List<FastSearchModel> items = new List<FastSearchModel>();
+            try
+            {
+                DbConnection.Open();
+
+                q = new Queries(DbConnection);
+
+                if (type == Gen.DBType.Postgres)
+                    items = q.GetFastItemsPostgres();
+
+                if (type == Gen.DBType.Cache)
+                    items = q.GetFastItemsCache();
+
+
+            }
+            catch (Exception ex)
+            {
+                throw (ex);
+            }
+            finally
+            {
+                DbConnection.Close();
+            }
+            return items;
+        }
+
+        static SortedList<double, FastSearchModel> FussySearch(string line, List<FastSearchModel> items, int seachType)
+        {
+            SortedList<double, FastSearchModel> list = new SortedList<double, FastSearchModel>(new DuplicateKeyComparer<double>());
+
+            foreach (var item in items)
+            {
+                double met = 0.0;
+                if (seachType == 1)
+                {
+                    met = Convert.ToDouble(Metrics.LevenshteinDistance(line, item.Description));
+                    if (met < line.Length * 0.5)
+                        list.Add(met, item);
+                }
+                if (seachType == 2)
+                {
+                    met = Metrics.JaroWinklerDistance(line, item.Description);
+                    if (met > 0.7)
+                        list.Add(met, item);
+                }
+                if (seachType == 3)
+                {
+                    met = Metrics.LongestCommonSubstring(line, item.Description);
+                    if (met > line.Length * 0.7)
+                        list.Add(met, item);
+                }
+
+            }
+
+            return list;
+        }
+
+            static void Search(string line, Gen.DBType type, bool insCase)
         {
             var niceLine = CreateNiceString(line);
             OdbcConnection DbConnection = new OdbcConnection(dsn);
@@ -191,12 +379,27 @@ namespace Generator
                                             "xfc", "ujkjc", "ujhjl", "gjcktlybq", "gjrf", "[jhjij", "ghbdtn", "pljhjdj", "pljhjdf", "ntcn", "yjdjq", "jr", "tuj", "rjt",
                                             "kb,j", "xnjkb", "ndj.", "ndjz", "nen", "zcyj", "gjyznyj", "x`", "xt" };
 
-            IDictionary<char, char> letters = new Dictionary<char, char>{ { 'q', 'й'}, { 'w','ц'}, { 'e','у'}, { 'r','к'}, { 't','е'}, { 'y','н'}, { 'u','г'}, { 'i','ш'}, { 'o','щ'}, { 'p','з'}, { '[','х'}, { ']','ъ'}, 
-                                                                          { 'a','ф'}, { 's','ы'}, { 'd','в'}, { 'f','а'}, { 'g','п'}, { 'h','р'}, { 'j','о'}, { 'k','л'}, { 'l','д'}, { ';','ж'}, { '\'','э'}, { 'z','я'}, 
-                                                                          { 'x','ч'}, { 'c','с'}, { 'v','м'}, { 'b','и'}, { 'n','т'}, { 'm','ь'}, { ',','б'}, { '.','ю'}, { '/','.'}, { '`','ё'}, { 'Q','Й'}, { 'W','Ц'}, 
-                                                                          { 'E','У'}, { 'R','К'}, { 'T','Е'}, { 'Y','Н'}, { 'U','Г'}, { 'I','Ш'}, { 'O','Щ'}, { 'P','З'}, { '{','Х'}, { '}','Ъ'}, { 'A','Ф'}, { 'S','Ы'}, 
-                                                                          { 'D','В'}, { 'F','А'}, { 'G','П'}, { 'H','Р'}, { 'J','О'}, { 'K','Л'}, { 'L','Д'}, { ':','Ж'}, { '"','Э'}, { '|','/'}, { 'Z','Я'}, { 'X','Ч'}, 
-                                                                          { 'C','С'}, { 'V','М'}, { 'B','И'}, { 'N','Т'}, { 'M','Ь'}, { '<','Б'}, { '>','Ю'}, { '?',','}, { '~','Ё'}, { '@','"'}, { '#','№'}, { '$',';'}, 
+            char[] delimiterChars = { ' ' };
+
+            var lineWords = line.Trim().ToLower().Split(delimiterChars);
+
+            foreach (var word in lineWords)
+            {
+                if (words.Contains(word))
+                    errorCount++;
+            }
+
+            return (errorCount >= errorMax) ? Replace(line) : line;
+        }
+
+        static string Replace(string line)
+        {
+            IDictionary<char, char> letters = new Dictionary<char, char>{ { 'q', 'й'}, { 'w','ц'}, { 'e','у'}, { 'r','к'}, { 't','е'}, { 'y','н'}, { 'u','г'}, { 'i','ш'}, { 'o','щ'}, { 'p','з'}, { '[','х'}, { ']','ъ'},
+                                                                          { 'a','ф'}, { 's','ы'}, { 'd','в'}, { 'f','а'}, { 'g','п'}, { 'h','р'}, { 'j','о'}, { 'k','л'}, { 'l','д'}, { ';','ж'}, { '\'','э'}, { 'z','я'},
+                                                                          { 'x','ч'}, { 'c','с'}, { 'v','м'}, { 'b','и'}, { 'n','т'}, { 'm','ь'}, { ',','б'}, { '.','ю'}, { '/','.'}, { '`','ё'}, { 'Q','Й'}, { 'W','Ц'},
+                                                                          { 'E','У'}, { 'R','К'}, { 'T','Е'}, { 'Y','Н'}, { 'U','Г'}, { 'I','Ш'}, { 'O','Щ'}, { 'P','З'}, { '{','Х'}, { '}','Ъ'}, { 'A','Ф'}, { 'S','Ы'},
+                                                                          { 'D','В'}, { 'F','А'}, { 'G','П'}, { 'H','Р'}, { 'J','О'}, { 'K','Л'}, { 'L','Д'}, { ':','Ж'}, { '"','Э'}, { '|','/'}, { 'Z','Я'}, { 'X','Ч'},
+                                                                          { 'C','С'}, { 'V','М'}, { 'B','И'}, { 'N','Т'}, { 'M','Ь'}, { '<','Б'}, { '>','Ю'}, { '?',','}, { '~','Ё'}, { '@','"'}, { '#','№'}, { '$',';'},
                                                                           { '^',':' }, { '&','?' }, { ' ', ' '} };
 
             var dictBuf = letters.FlipDict();
@@ -209,18 +412,7 @@ namespace Generator
             dictBuf.Remove('/');
 
             letters = letters.Merge(dictBuf);
-
-            char[] delimiterChars = { ' ' };
-
-            var lineWords = line.Trim().ToLower().Split(delimiterChars);
-
-            foreach (var word in lineWords)
-            {
-                if (words.Contains(word))
-                    errorCount++;
-            }
-
-            return (errorCount >= errorMax) ? line.ReplaceByAlph(letters) : line;
+            return line.ReplaceByAlph(letters);
         }
 
 

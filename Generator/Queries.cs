@@ -97,6 +97,45 @@ namespace Generator
             Console.WriteLine("Postgres");
             return Search(command);
         }
+        public List<FastSearchModel> GetFastItemsCache()
+        {
+            var sql = @"SELECT description 
+                        FROM exchange.productitem 
+                        GROUP BY %EXACT(description)";
+
+            Console.WriteLine("Cache");
+            return GetItemsForFastSearch(sql);
+        }
+
+        public List<FastSearchModel> GetFastItemsPostgres()
+        {
+            var sql = @"SELECT description 
+                        FROM productitem 
+                        GROUP BY description";
+
+            Console.WriteLine("Postgres");
+            return GetItemsForFastSearch(sql);
+        }
+
+        private List<FastSearchModel> GetItemsForFastSearch(string sql)
+        {
+            OdbcCommand command = new OdbcCommand(sql, con);
+
+            sw = Stopwatch.StartNew();
+            OdbcDataReader reader = command.ExecuteReader();
+
+            var lines = new List<FastSearchModel>();
+            while (reader.Read())
+            {
+                var prod = new FastSearchModel();
+                prod.Description = reader.GetString(0);
+                lines.Add(prod);
+            }
+            sw.Stop();
+            Console.WriteLine(" Rows selected: {0} Query elapsed time: {1:N4} ms", lines.Count, sw.Elapsed.TotalMilliseconds);
+
+            return lines;
+        }
 
         private List<ProductItemAggModel> Aggregate(string sql)
         {

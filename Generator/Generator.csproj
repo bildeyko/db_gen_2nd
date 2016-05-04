@@ -86,11 +86,17 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DuplicateKeyComparer.cs" />
     <Compile Include="Extensions\DictionaryExtensions.cs" />
     <Compile Include="Extensions\StringExtensions.cs" />
+    <Compile Include="FuzzyString\JaroWinklerDistance.cs" />
+    <Compile Include="FuzzyString\LevenshteinDistance.cs" />
+    <Compile Include="FuzzyString\LongestCommonSubsequence.cs" />
+    <Compile Include="FuzzyString\LongestCommonSubstring.cs" />
     <Compile Include="Gen.cs" />
     <Compile Include="Models\CityModel.cs" />
     <Compile Include="Models\CompanyModel.cs" />
+    <Compile Include="Models\FastSearchModel.cs" />
     <Compile Include="Models\ProductItemAggModel.cs" />
     <Compile Include="Models\ProductModel.cs" />
     <Compile Include="Models\ProductTypeModel.cs" />
