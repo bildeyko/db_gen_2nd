@@ -26,7 +26,8 @@ namespace Generator
 
         static void Main(string[] args)
         {
-            string path = "settings.xml";
+            string appDir = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ;
+            string path =  appDir + "\\settings.xml";
 
             try {
                 XmlSerializer serializer = new XmlSerializer(typeof(Settings));
