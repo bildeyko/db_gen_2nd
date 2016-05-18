@@ -141,7 +141,16 @@ namespace Generator
 
         static void DialogMode(Gen.DBType dbtype)
         {
-            Console.WriteLine("Dialog mode");
+            var dialogStart = new StringBuilder();
+            dialogStart.AppendLine("Dialog mode");
+            dialogStart.AppendLine("Commands");
+            dialogStart.AppendLine("  just text - search");
+            dialogStart.AppendLine("  /select N - select item from result");
+            dialogStart.AppendLine("  /setfussy [1|2|3] - change search metric");
+            dialogStart.AppendLine("  /q or /quit");
+            Console.WriteLine(dialogStart.ToString());
+
+
             bool exit = true;
             Regex comRegex = new Regex(@"^\s*/(quit|select|q|setfussy)\s*");
             Regex selectRegex = new Regex(@"^\s*/select\s*(\d+)");
